@@ -22,9 +22,12 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/myapp_development
       - RAILS_ENV=development
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-demo_client_id}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-demo_client_secret}
+      - GITHUB_REDIRECT_URI=${GITHUB_REDIRECT_URI:-http://localhost:3001/auth/github/callback}
     depends_on:
       - db
-    command: ruby simple_api.rb
+    command: ruby oauth_api.rb
 
   frontend:
     build:
