@@ -53,7 +53,15 @@ class GitHubOAuthAPI
   private
 
   def route_request(method, path, headers)
-    case path
+    # パスとクエリパラメータを分離
+    path_without_query = path.split('?').first
+
+    # CORS preflight request (OPTIONS) の処理
+    if method == 'OPTIONS'
+      return cors_preflight_response
+    end
+
+    case path_without_query
     when '/'
       json_response({ message: "GitHub UMA API is running!", endpoints: [
         "GET /auth/github - Start GitHub OAuth",
@@ -369,6 +377,16 @@ class GitHubOAuthAPI
     "HTTP/1.1 302 Found\r\n" +
     "Location: #{location}\r\n" +
     "Access-Control-Allow-Origin: *\r\n" +
+    "Content-Length: 0\r\n" +
+    "\r\n"
+  end
+
+  def cors_preflight_response
+    "HTTP/1.1 200 OK\r\n" +
+    "Access-Control-Allow-Origin: *\r\n" +
+    "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n" +
+    "Access-Control-Allow-Headers: Content-Type, Authorization\r\n" +
+    "Access-Control-Max-Age: 86400\r\n" +
     "Content-Length: 0\r\n" +
     "\r\n"
   end
