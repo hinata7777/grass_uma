@@ -53,8 +53,15 @@ class GitHubOAuthAPI
         headers[key.downcase] = value if key && value
       end
 
+      # POSTリクエストの場合、ボディを読み込み
+      body = nil
+      if method == 'POST' && headers['content-length']
+        content_length = headers['content-length'].to_i
+        body = client.read(content_length) if content_length > 0
+      end
+
       # ルーティング処理
-      response = route_request(method, path, headers)
+      response = route_request(method, path, headers, body)
 
       client.print response
       client.close
@@ -63,9 +70,12 @@ class GitHubOAuthAPI
 
   private
 
-  def route_request(method, path, headers)
+  def route_request(method, path, headers, body = nil)
     # パスとクエリパラメータを分離
     path_without_query = path.split('?').first
+    @request_body = body  # インスタンス変数に保存
+
+    puts "DEBUG: Received request - Method: #{method}, Path: #{path_without_query}"
 
     # CORS preflight request (OPTIONS) の処理
     if method == 'OPTIONS'
@@ -109,13 +119,31 @@ class GitHubOAuthAPI
       get_user_uma_discoveries(headers)
 
     when '/api/uma/discover'
-      discover_new_uma(headers)
+      if method == 'POST'
+        discover_new_uma(headers)
+      else
+        json_response({ error: "Method not allowed. Use POST." }, 405)
+      end
 
     when '/api/uma/feed'
-      feed_uma(headers)
+      if method == 'POST'
+        feed_uma(headers)
+      else
+        json_response({ error: "Method not allowed. Use POST." }, 405)
+      end
+
+    when '/api/debug/add_points'
+      debug_add_points(headers, path)
 
     when '/health'
       json_response({ status: "ok", timestamp: Time.now.to_i })
+
+    when '/debug/sessions'
+      json_response({
+        active_sessions: @sessions.keys.length,
+        session_ids: @sessions.keys.map { |id| id[0..8] + "..." },
+        full_session_id: @sessions.keys.first
+      })
 
     else
       json_response({ error: "Not Found" }, 404)
@@ -277,8 +305,10 @@ class GitHubOAuthAPI
       today_contributions = get_today_contributions(session[:access_token], username, today)
 
       if today_contributions
-        # 発見ポイント計算
-        discovery_points_gained = calculate_discovery_points_from_contributions(today_contributions)
+        # 草パワー計算
+        grass_power_gained = calculate_grass_power_from_contributions(today_contributions)
+
+        puts "DEBUG: Today's contributions: #{today_contributions}, Grass power to gain: #{grass_power_gained}"
 
         # ユーザーのIDを取得
         user_result = conn.exec_params(
@@ -289,34 +319,66 @@ class GitHubOAuthAPI
         if user_result.ntuples > 0
           user_id = user_result[0]['id'].to_i
 
-          # 日々のコントリビューション記録を更新または挿入
-          conn.exec_params(
-            "INSERT INTO daily_contributions (user_id, contribution_date, contribution_count, discovery_points_gained)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (user_id, contribution_date)
-             DO UPDATE SET contribution_count = $3, discovery_points_gained = $4, synced_at = CURRENT_TIMESTAMP",
-            [user_id, today, today_contributions, discovery_points_gained]
+          # 既存の記録をチェック
+          existing_result = conn.exec_params(
+            "SELECT contribution_count, grass_power_gained FROM daily_contributions WHERE user_id = $1 AND contribution_date = $2",
+            [user_id, today]
           )
 
-          # ユーザーの発見ポイントを更新
-          conn.exec_params(
-            "UPDATE users SET discovery_points = discovery_points + $2 WHERE id = $1",
-            [user_id, discovery_points_gained]
-          )
+          if existing_result.ntuples > 0
+            # 既存の記録がある場合、差分のみ計算
+            old_contributions = existing_result[0]['contribution_count'].to_i
+            old_power = existing_result[0]['grass_power_gained'].to_i
 
-          # 更新後のポイント取得
+            if today_contributions != old_contributions
+              # コントリビューション数が変わった場合のみ更新
+              power_difference = grass_power_gained - old_power
+
+              # 記録を更新
+              conn.exec_params(
+                "UPDATE daily_contributions SET contribution_count = $3, grass_power_gained = $4, synced_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND contribution_date = $2",
+                [user_id, today, today_contributions, grass_power_gained]
+              )
+
+              # 草パワー差分のみ追加
+              conn.exec_params(
+                "UPDATE users SET grass_power = grass_power + $2 WHERE id = $1",
+                [user_id, power_difference]
+              )
+
+              grass_power_gained = power_difference
+            else
+              # 変更なしの場合
+              puts "DEBUG: No change in contributions, grass power gained: 0"
+              grass_power_gained = 0
+            end
+          else
+            # 新規記録の場合
+            conn.exec_params(
+              "INSERT INTO daily_contributions (user_id, contribution_date, contribution_count, grass_power_gained) VALUES ($1, $2, $3, $4)",
+              [user_id, today, today_contributions, grass_power_gained]
+            )
+
+            # ユーザーの草パワーを更新
+            conn.exec_params(
+              "UPDATE users SET grass_power = grass_power + $2 WHERE id = $1",
+              [user_id, grass_power_gained]
+            )
+          end
+
+          # 更新後の草パワー取得
           updated_result = conn.exec_params(
-            "SELECT discovery_points FROM users WHERE id = $1",
+            "SELECT grass_power FROM users WHERE id = $1",
             [user_id]
           )
-          current_points = updated_result[0]['discovery_points'].to_i
+          current_power = updated_result[0]['grass_power'].to_i
 
           json_response({
             username: username,
             date: today.to_s,
             contributions_count: today_contributions,
-            discovery_points_gained: discovery_points_gained,
-            total_discovery_points: current_points,
+            grass_power_gained: grass_power_gained,
+            total_grass_power: current_power,
             synced_at: Time.now.to_i
           })
         else
@@ -422,7 +484,7 @@ class GitHubOAuthAPI
     end
   end
 
-  def calculate_discovery_points_from_contributions(count)
+  def calculate_grass_power_from_contributions(count)
     case count
     when 0
       0
@@ -444,7 +506,16 @@ class GitHubOAuthAPI
   end
 
   def json_response(data, status = 200)
-    body = data.to_json
+    puts "DEBUG: Starting JSON response generation..."
+    begin
+      body = data.to_json
+      puts "DEBUG: JSON encoding successful, body length: #{body.length}"
+    rescue => e
+      puts "JSON encoding error: #{e.message}"
+      puts "Data: #{data.inspect}"
+      body = { error: "JSON encoding failed" }.to_json
+      status = 500
+    end
 
     status_text = case status
     when 200 then "OK"
@@ -455,14 +526,20 @@ class GitHubOAuthAPI
     else "Internal Server Error"
     end
 
-    "HTTP/1.1 #{status} #{status_text}\r\n" +
-    "Content-Type: application/json\r\n" +
+    # 正確なバイト長を計算
+    body_bytes = body.bytesize
+
+    response = "HTTP/1.1 #{status} #{status_text}\r\n" +
+    "Content-Type: application/json; charset=utf-8\r\n" +
     "Access-Control-Allow-Origin: *\r\n" +
     "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n" +
     "Access-Control-Allow-Headers: Content-Type, Authorization\r\n" +
-    "Content-Length: #{body.length}\r\n" +
+    "Content-Length: #{body_bytes}\r\n" +
     "\r\n" +
     body
+
+    puts "DEBUG: Response length - Body bytes: #{body_bytes}, Total response length: #{response.bytesize}"
+    response
   end
 
   def redirect_response(location)
@@ -554,27 +631,58 @@ class GitHubOAuthAPI
   end
 
   def get_user_uma_discoveries(headers)
+    puts "DEBUG: Getting UMA discoveries..."
+
     auth_header = headers['authorization']
     unless auth_header && auth_header.start_with?('Bearer ')
+      puts "DEBUG: No authorization header for discoveries"
       return json_response({ error: "No authorization header", authenticated: false }, 401)
     end
 
     session_id = auth_header.sub('Bearer ', '')
     session = @sessions[session_id]
     unless session
+      puts "DEBUG: Invalid session for discoveries"
       return json_response({ error: "Invalid session", authenticated: false }, 401)
     end
 
+    puts "DEBUG: Session found for discoveries: #{session[:user]['login']}"
+
     conn = db_connection
-    return json_response({ error: "Database connection failed" }, 500) unless conn
+    unless conn
+      puts "DEBUG: Database connection failed for discoveries"
+      return json_response({ error: "Database connection failed" }, 500)
+    end
 
     begin
       # ユーザー確保
       ensure_user_exists(session[:user])
 
+      # まずユーザー情報を取得
+      puts "DEBUG: Fetching user info for github_user_id: #{session[:user]['id']}"
+      user_result = conn.exec_params(
+        "SELECT grass_power, total_discoveries FROM users WHERE github_user_id = $1",
+        [session[:user]['id']]
+      )
+
+      puts "DEBUG: User query returned #{user_result.ntuples} rows"
+
+      user_stats = if user_result.ntuples > 0
+        stats = {
+          grass_power: user_result[0]['grass_power'].to_i,
+          total_discoveries: user_result[0]['total_discoveries'].to_i
+        }
+        puts "DEBUG: User stats: #{stats}"
+        stats
+      else
+        puts "DEBUG: No user found, returning default stats"
+        { grass_power: 0, total_discoveries: 0 }
+      end
+
       # ユーザーの発見したUMA取得
+      puts "DEBUG: Fetching discoveries for github_user_id: #{session[:user]['id']}"
       result = conn.exec_params(
-        "SELECT ud.*, us.name, us.emoji, us.rarity, us.habitat, u.discovery_points, u.total_discoveries
+        "SELECT ud.*, us.name, us.emoji, us.rarity, us.habitat
          FROM user_uma_discoveries ud
          JOIN uma_species us ON ud.uma_species_id = us.id
          JOIN users u ON ud.user_id = u.id
@@ -583,8 +691,10 @@ class GitHubOAuthAPI
         [session[:user]['id']]
       )
 
+      puts "DEBUG: Discoveries query returned #{result.ntuples} rows"
+
       discoveries = result.map do |row|
-        {
+        discovery = {
           id: row['id'].to_i,
           species_name: row['name'],
           emoji: row['emoji'],
@@ -597,18 +707,22 @@ class GitHubOAuthAPI
           total_contributions_fed: row['total_contributions_fed'].to_i,
           is_favorite: row['is_favorite'] == 't'
         }
+        puts "DEBUG: Discovery: #{discovery}"
+        discovery
       end
 
-      user_stats = {
-        discovery_points: result.ntuples > 0 ? result[0]['discovery_points'].to_i : 0,
-        total_discoveries: result.ntuples > 0 ? result[0]['total_discoveries'].to_i : 0
-      }
+      puts "DEBUG: Total discoveries processed: #{discoveries.length}"
 
-      json_response({
+      response_data = {
         discoveries: discoveries,
         user_stats: user_stats,
         total_discovered: discoveries.length
-      })
+      }
+
+      puts "DEBUG: About to send discoveries response with #{discoveries.length} discoveries"
+      puts "DEBUG: User stats being sent: #{user_stats}"
+
+      json_response(response_data)
     rescue => e
       puts "Error fetching user discoveries: #{e.message}"
       json_response({ error: "Failed to fetch discoveries" }, 500)
@@ -618,6 +732,291 @@ class GitHubOAuthAPI
   end
 
   def discover_new_uma(headers)
+    puts "DEBUG: Starting UMA discovery..."
+
+    auth_header = headers['authorization']
+    unless auth_header && auth_header.start_with?('Bearer ')
+      puts "DEBUG: No authorization header"
+      return json_response({ error: "No authorization header", authenticated: false }, 401)
+    end
+
+    session_id = auth_header.sub('Bearer ', '')
+    session = @sessions[session_id]
+    unless session
+      puts "DEBUG: Invalid session"
+      return json_response({ error: "Invalid session", authenticated: false }, 401)
+    end
+
+    puts "DEBUG: Session found for user: #{session[:user]['login']}"
+
+    conn = db_connection
+    unless conn
+      puts "DEBUG: Database connection failed"
+      return json_response({ error: "Database connection failed" }, 500)
+    end
+
+    begin
+      # ユーザー確保
+      ensure_user_exists(session[:user])
+
+      # ユーザーの現在の草パワー取得
+      user_result = conn.exec_params(
+        "SELECT id, grass_power FROM users WHERE github_user_id = $1",
+        [session[:user]['id']]
+      )
+
+      if user_result.ntuples == 0
+        puts "DEBUG: User not found in database"
+        return json_response({ error: "User not found" }, 404)
+      end
+
+      user_id = user_result[0]['id'].to_i
+      current_power = user_result[0]['grass_power'].to_i
+
+      puts "DEBUG: User ID: #{user_id}, Current grass power: #{current_power}"
+
+      if current_power < 10
+        puts "DEBUG: Not enough grass power - Current: #{current_power}, Required: 10"
+        return json_response({
+          error: "Not enough grass power",
+          current_power: current_power,
+          required_power: 10
+        }, 400)
+      end
+
+      # 発見可能なUMAをランダム選択（未発見のもの）
+      puts "DEBUG: Searching for discoverable UMA with #{current_power} grass power for user #{user_id}"
+
+      species_result = conn.exec_params(
+        "SELECT us.* FROM uma_species us
+         WHERE us.is_active = true
+         AND us.discovery_threshold <= $1
+         AND us.id NOT IN (
+           SELECT uma_species_id FROM user_uma_discoveries WHERE user_id = $2
+         )
+         ORDER BY RANDOM() LIMIT 1",
+        [current_power, user_id]
+      )
+
+      puts "DEBUG: Found #{species_result.ntuples} available UMA species"
+
+      if species_result.ntuples == 0
+        puts "DEBUG: No new UMA available for discovery"
+        return json_response({
+          message: "No new UMA available for discovery",
+          current_power: current_power
+        })
+      end
+
+      species = species_result[0]
+      discovery_cost = [species['discovery_threshold'].to_i, 10].max
+
+      puts "DEBUG: Selected UMA: #{species['name']}, Cost: #{discovery_cost}"
+
+      # UMA発見を記録
+      puts "DEBUG: Recording UMA discovery..."
+      conn.exec_params(
+        "INSERT INTO user_uma_discoveries (user_id, uma_species_id, discovery_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+        [user_id, species['id']]
+      )
+
+      # 草パワー消費とカウンタ更新
+      puts "DEBUG: Updating user grass power and discovery count..."
+      conn.exec_params(
+        "UPDATE users SET grass_power = grass_power - $2, total_discoveries = total_discoveries + 1 WHERE id = $1",
+        [user_id, discovery_cost]
+      )
+
+      # アクティビティログ記録
+      puts "DEBUG: Recording activity log..."
+      conn.exec_params(
+        "INSERT INTO uma_activity_logs (user_id, activity_type, description, points_used) VALUES ($1, 'discovery', $2, $3)",
+        [user_id, "新しいUMA「#{species['name']}」を発見しました！", discovery_cost]
+      )
+
+      puts "DEBUG: UMA discovery completed successfully!"
+
+      discovered_uma = {
+        name: species['name'],
+        emoji: species['emoji'],
+        description: species['description'],
+        rarity: species['rarity'].to_i,
+        habitat: species['habitat']
+      }
+
+      response_data = {
+        success: true,
+        discovered_uma: discovered_uma,
+        power_used: discovery_cost,
+        remaining_power: current_power - discovery_cost
+      }
+
+      puts "DEBUG: Sending response: #{response_data.inspect}"
+      json_response(response_data)
+    rescue => e
+      puts "Error discovering UMA: #{e.message}"
+      json_response({ error: "Failed to discover UMA" }, 500)
+    ensure
+      conn&.close
+    end
+  end
+
+  def feed_uma(headers)
+    puts "DEBUG: Feed UMA request received"
+    puts "DEBUG: Headers: #{headers.inspect}"
+    puts "DEBUG: Request body: #{@request_body.inspect}"
+
+    auth_header = headers['authorization']
+    unless auth_header && auth_header.start_with?('Bearer ')
+      puts "DEBUG: No authorization header found"
+      return json_response({ error: "認証が必要です", authenticated: false }, 401)
+    end
+
+    session_id = auth_header.sub('Bearer ', '')
+    session = @sessions[session_id]
+    unless session
+      puts "DEBUG: Invalid session: #{session_id}"
+      return json_response({ error: "無効なセッションです", authenticated: false }, 401)
+    end
+
+    puts "DEBUG: Session found: #{session[:user]['login']}"
+
+    begin
+      # POST データを読み込み（JSON形式）
+      data = JSON.parse(@request_body || '{}') rescue {}
+
+      uma_discovery_id = data['uma_id']
+      feed_amount = (data['feed_amount'] || 10).to_i  # デフォルト10草パワー
+
+      unless uma_discovery_id
+        return json_response({ error: "UMA IDが必要です" }, 400)
+      end
+
+      conn = db_connection
+      return json_response({ error: "データベース接続に失敗しました" }, 500) unless conn
+
+      # ユーザー情報を取得
+      user_result = conn.exec_params(
+        "SELECT id, grass_power FROM users WHERE github_user_id = $1",
+        [session[:user]['id']]
+      )
+
+      if user_result.ntuples == 0
+        return json_response({ error: "ユーザーが見つかりません" }, 404)
+      end
+
+      user_id = user_result[0]['id'].to_i
+      current_power = user_result[0]['grass_power'].to_i
+
+      # 草パワーが足りるかチェック
+      if current_power < feed_amount
+        return json_response({
+          error: "草パワーが不足しています",
+          required: feed_amount,
+          current: current_power
+        }, 400)
+      end
+
+      # UMAの発見記録を確認（ユーザーが実際に発見したUMAか）
+      uma_result = conn.exec_params(
+        "SELECT id, level, affection FROM user_uma_discoveries WHERE id = $1 AND user_id = $2",
+        [uma_discovery_id, user_id]
+      )
+
+      if uma_result.ntuples == 0
+        return json_response({ error: "指定されたUMAが見つかりません" }, 404)
+      end
+
+      current_level = uma_result[0]['level'].to_i
+      current_affection = uma_result[0]['affection'].to_i
+
+      # 餌やり効果を計算
+      affection_gain = calculate_affection_gain(feed_amount, current_level)
+      new_affection = [current_affection + affection_gain, 100].min  # 親密度は最大100
+
+      # レベルアップ判定
+      new_level = calculate_level_from_affection(new_affection)
+      level_up = new_level > current_level
+
+      # データベース更新
+      conn.exec_params("BEGIN")
+
+      # UMAの親密度・レベル更新
+      conn.exec_params(
+        "UPDATE user_uma_discoveries SET level = $1, affection = $2 WHERE id = $3",
+        [new_level, new_affection, uma_discovery_id]
+      )
+
+      # ユーザーの草パワー減少
+      conn.exec_params(
+        "UPDATE users SET grass_power = grass_power - $1 WHERE id = $2",
+        [feed_amount, user_id]
+      )
+
+      # アクティビティログ記録
+      activity_desc = level_up ?
+        "UMAに餌をあげてレベルが#{current_level}から#{new_level}に上がりました！" :
+        "UMAに餌をあげて親密度が#{affection_gain}上がりました"
+
+      conn.exec_params(
+        "INSERT INTO uma_activity_logs (user_id, activity_type, description, points_used) VALUES ($1, 'feeding', $2, $3)",
+        [user_id, activity_desc, feed_amount]
+      )
+
+      conn.exec_params("COMMIT")
+
+      json_response({
+        success: true,
+        message: level_up ? "🎉 レベルアップしました！" : "🍯 UMAが喜んでいます！",
+        results: {
+          affection_gained: affection_gain,
+          new_affection: new_affection,
+          new_level: new_level,
+          level_up: level_up,
+          power_used: feed_amount,
+          remaining_power: current_power - feed_amount
+        }
+      })
+
+    rescue JSON::ParserError
+      json_response({ error: "リクエストデータが不正です" }, 400)
+    rescue => e
+      puts "Error feeding UMA: #{e.message}"
+      puts e.backtrace
+      conn&.exec_params("ROLLBACK") rescue nil
+      json_response({ error: "UMA餌やりに失敗しました" }, 500)
+    ensure
+      conn&.close
+    end
+  end
+
+  # 餌やりの親密度上昇量を計算
+  def calculate_affection_gain(feed_amount, current_level)
+    base_gain = feed_amount / 5  # 5草パワーで1親密度
+    # レベルが高いほど効率が少し悪くなる
+    level_penalty = current_level * 0.1
+    [base_gain - level_penalty, 1].max.to_i  # 最低1は上がる
+  end
+
+  # 親密度からレベルを計算
+  def calculate_level_from_affection(affection)
+    case affection
+    when 0..19
+      1
+    when 20..39
+      2
+    when 40..59
+      3
+    when 60..79
+      4
+    when 80..100
+      5
+    else
+      1
+    end
+  end
+
+  def debug_add_points(headers, path)
     auth_header = headers['authorization']
     unless auth_header && auth_header.start_with?('Bearer ')
       return json_response({ error: "No authorization header", authenticated: false }, 401)
@@ -629,95 +1028,43 @@ class GitHubOAuthAPI
       return json_response({ error: "Invalid session", authenticated: false }, 401)
     end
 
+    # クエリパラメータからポイント数を取得
+    uri = URI(path)
+    params = URI.decode_www_form(uri.query || '')
+    points = params.find { |k, v| k == 'points' }&.last&.to_i || 50
+
     conn = db_connection
     return json_response({ error: "Database connection failed" }, 500) unless conn
 
     begin
-      # ユーザー確保
       ensure_user_exists(session[:user])
 
-      # ユーザーの現在のポイント取得
-      user_result = conn.exec_params(
-        "SELECT id, discovery_points FROM users WHERE github_user_id = $1",
+      # ユーザーに草パワーを追加
+      conn.exec_params(
+        "UPDATE users SET grass_power = grass_power + $2 WHERE github_user_id = $1",
+        [session[:user]['id'], points]
+      )
+
+      # 更新後の草パワー取得
+      result = conn.exec_params(
+        "SELECT grass_power FROM users WHERE github_user_id = $1",
         [session[:user]['id']]
       )
 
-      return json_response({ error: "User not found" }, 404) if user_result.ntuples == 0
-
-      user_id = user_result[0]['id'].to_i
-      current_points = user_result[0]['discovery_points'].to_i
-
-      if current_points < 10
-        return json_response({
-          error: "Not enough discovery points",
-          current_points: current_points,
-          required_points: 10
-        }, 400)
-      end
-
-      # 発見可能なUMAをランダム選択（未発見のもの）
-      species_result = conn.exec_params(
-        "SELECT us.* FROM uma_species us
-         WHERE us.is_active = true
-         AND us.discovery_threshold <= $1
-         AND us.id NOT IN (
-           SELECT uma_species_id FROM user_uma_discoveries WHERE user_id = $2
-         )
-         ORDER BY RANDOM() LIMIT 1",
-        [current_points, user_id]
-      )
-
-      if species_result.ntuples == 0
-        return json_response({
-          message: "No new UMA available for discovery",
-          current_points: current_points
-        })
-      end
-
-      species = species_result[0]
-      discovery_cost = [species['discovery_threshold'].to_i, 10].max
-
-      # UMA発見を記録
-      conn.exec_params(
-        "INSERT INTO user_uma_discoveries (user_id, uma_species_id, discovery_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-        [user_id, species['id']]
-      )
-
-      # ポイント消費とカウンタ更新
-      conn.exec_params(
-        "UPDATE users SET discovery_points = discovery_points - $2, total_discoveries = total_discoveries + 1 WHERE id = $1",
-        [user_id, discovery_cost]
-      )
-
-      # アクティビティログ記録
-      conn.exec_params(
-        "INSERT INTO uma_activity_logs (user_id, activity_type, description, points_used) VALUES ($1, 'discovery', $2, $3)",
-        [user_id, "新しいUMA「#{species['name']}」を発見しました！", discovery_cost]
-      )
+      total_power = result[0]['grass_power'].to_i
 
       json_response({
         success: true,
-        discovered_uma: {
-          name: species['name'],
-          emoji: species['emoji'],
-          description: species['description'],
-          rarity: species['rarity'].to_i,
-          habitat: species['habitat']
-        },
-        points_used: discovery_cost,
-        remaining_points: current_points - discovery_cost
+        power_added: points,
+        total_power: total_power,
+        message: "Debug: #{points} grass power added"
       })
     rescue => e
-      puts "Error discovering UMA: #{e.message}"
-      json_response({ error: "Failed to discover UMA" }, 500)
+      puts "Error adding debug points: #{e.message}"
+      json_response({ error: "Failed to add points" }, 500)
     ensure
       conn&.close
     end
-  end
-
-  def feed_uma(headers)
-    # TODO: UMA育成機能の実装
-    json_response({ message: "UMA feeding feature coming soon!" })
   end
 end
 
