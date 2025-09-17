@@ -75,6 +75,14 @@ class ApiService {
     return response.json();
   }
 
+  async resetDiscoveries() {
+    const response = await fetch(`${API_BASE_URL}/api/uma/reset-discoveries`, {
+      method: 'POST',
+      headers: this.getHeaders()
+    });
+    return response.json();
+  }
+
   // レスポンス処理のヘルパー
   async handleResponse(apiCall) {
     try {

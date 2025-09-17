@@ -149,6 +149,31 @@ export const useUMA = () => {
     }
   };
 
+  const resetDiscoveries = async () => {
+    setLoading(true);
+    try {
+      const data = await apiService.resetDiscoveries();
+      if (data.success) {
+        alert('🗑️ UMA発見データをリセットしました！');
+        // 状態をリセット
+        setDiscoveries([]);
+        setUserStats(prev => ({
+          ...prev,
+          total_discoveries: 0
+        }));
+        // 最新データを再読み込み
+        await loadUMAData();
+      } else {
+        alert('リセットに失敗しました: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Failed to reset discoveries:', error);
+      alert('リセットに失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ユーティリティ関数
   const getRarityColor = (rarity) => {
     const colors = {
@@ -224,6 +249,7 @@ export const useUMA = () => {
     discoverUMA,
     feedUMA,
     addTestPoints,
+    resetDiscoveries,
     getRarityColor,
     getRarityText,
     getNextLevelInfo,

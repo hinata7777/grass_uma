@@ -8,6 +8,7 @@ const HomePage = ({
   onSyncContributions,
   onDiscoverUMA,
   onAddTestPoints,
+  onResetDiscoveries,
   onFeedUMA,
   getRarityColor,
   getRarityText,
@@ -78,6 +79,21 @@ const HomePage = ({
                        }`}
           >
             {loading ? '⏳ 処理中...' : '🚀 開発用草パワー+500'}
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm('UMA発見データを全て削除しますか？この操作は取り消せません。')) {
+                onResetDiscoveries();
+              }
+            }}
+            disabled={loading}
+            className={`px-6 py-3 rounded border transition-all duration-300 drop-shadow-sm
+                       ${loading
+                         ? 'bg-gray-700 border-gray-600 text-uma-muted cursor-not-allowed opacity-60'
+                         : 'bg-red-800 border-red-800 text-uma-text hover:bg-red-900'
+                       }`}
+          >
+            🗑️ UMAデータリセット
           </button>
         </div>
       </div>

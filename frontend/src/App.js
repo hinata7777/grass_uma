@@ -37,7 +37,7 @@ function App() {
         onLogout={handleLogout}
       />
 
-      <main className="p-5 w-full">
+      <main className="p-5">
         {auth.isAuthenticated ? (
           <>
             {/* ユーザー情報エリア */}
@@ -79,6 +79,7 @@ function App() {
                 onSyncContributions={uma.syncContributions}
                 onDiscoverUMA={uma.discoverUMA}
                 onAddTestPoints={uma.addTestPoints}
+                onResetDiscoveries={uma.resetDiscoveries}
                 onFeedUMA={uma.feedUMA}
                 getRarityColor={uma.getRarityColor}
                 getRarityText={uma.getRarityText}

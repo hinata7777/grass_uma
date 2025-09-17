@@ -94,6 +94,7 @@ class GitHubOAuthAPI
         "GET /api/uma/discoveries - Get user's UMA discoveries",
         "POST /api/uma/discover - Try to discover new UMA",
         "POST /api/uma/feed - Feed UMA with contributions",
+        "POST /api/uma/reset-discoveries - Reset user's UMA discoveries",
         "GET /health - Health check"
       ]})
 
@@ -122,6 +123,13 @@ class GitHubOAuthAPI
     when '/api/uma/discover'
       if method == 'POST'
         discover_new_uma(headers)
+      else
+        json_response({ error: "Method not allowed. Use POST." }, 405)
+      end
+
+    when '/api/uma/reset-discoveries'
+      if method == 'POST'
+        reset_user_discoveries(headers)
       else
         json_response({ error: "Method not allowed. Use POST." }, 405)
       end
@@ -1076,6 +1084,74 @@ class GitHubOAuthAPI
     rescue => e
       puts "Error adding debug points: #{e.message}"
       json_response({ error: "Failed to add points" }, 500)
+    ensure
+      conn&.close
+    end
+  end
+
+  def reset_user_discoveries(headers)
+    puts "DEBUG: Resetting user discoveries..."
+
+    unless headers['authorization']
+      puts "DEBUG: No authorization header for reset"
+      return json_response({ error: "Authorization required" }, 401)
+    end
+
+    session_id = headers['authorization'].gsub('Bearer ', '')
+    session = @sessions[session_id]
+
+    unless session && session[:user]
+      puts "DEBUG: Invalid session for reset"
+      return json_response({ error: "Invalid session" }, 401)
+    end
+
+    puts "DEBUG: Session found for reset: #{session[:user]['login']}"
+
+    begin
+      conn = db_connection
+      unless conn
+        puts "DEBUG: Database connection failed for reset"
+        return json_response({ error: "Database connection failed" }, 500)
+      end
+
+      # ユーザーが存在することを確認
+      ensure_user_exists(session[:user])
+
+      # ユーザーIDを取得
+      user_result = conn.exec_params(
+        "SELECT id FROM users WHERE github_user_id = $1",
+        [session[:user]['id']]
+      )
+
+      if user_result.ntuples == 0
+        puts "DEBUG: User not found for reset"
+        return json_response({ error: "User not found" }, 404)
+      end
+
+      user_id = user_result[0]['id']
+
+      # UMA発見データを全削除
+      conn.exec_params(
+        "DELETE FROM user_uma_discoveries WHERE user_id = $1",
+        [user_id]
+      )
+
+      # total_discoveriesをリセット
+      conn.exec_params(
+        "UPDATE users SET total_discoveries = 0 WHERE id = $1",
+        [user_id]
+      )
+
+      puts "DEBUG: Successfully reset discoveries for user: #{session[:user]['login']}"
+
+      json_response({
+        success: true,
+        message: "UMA発見データをリセットしました"
+      }, 200)
+
+    rescue => e
+      puts "Error resetting discoveries: #{e.message}"
+      json_response({ error: "Failed to reset discoveries" }, 500)
     ensure
       conn&.close
     end
