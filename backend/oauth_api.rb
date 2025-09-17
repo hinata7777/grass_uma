@@ -98,7 +98,8 @@ class GitHubOAuthAPI
       ]})
 
     when '/auth/github'
-      github_oauth_redirect
+      frontend_port = extract_frontend_port(path)
+      github_oauth_redirect(frontend_port)
 
     when '/auth/github/callback'
       handle_github_callback(path)
@@ -150,8 +151,9 @@ class GitHubOAuthAPI
     end
   end
 
-  def github_oauth_redirect
+  def github_oauth_redirect(frontend_port = '3000')
     state = generate_random_string(32)
+    @sessions[state] = { frontend_port: frontend_port }
     auth_url = "https://github.com/login/oauth/authorize?" +
                "client_id=#{@client_id}&" +
                "redirect_uri=#{URI.encode_www_form_component(@redirect_uri)}&" +
@@ -166,10 +168,15 @@ class GitHubOAuthAPI
     uri = URI(path)
     params = URI.decode_www_form(uri.query || '')
     code = params.find { |k, v| k == 'code' }&.last
+    state = params.find { |k, v| k == 'state' }&.last
 
     unless code
       return json_response({ error: "Authorization code not found" }, 400)
     end
+
+    # stateからフロントエンドポートを取得
+    frontend_port = @sessions[state]&.dig(:frontend_port) || '3000'
+    frontend_url = "http://localhost:#{frontend_port}"
 
     # GitHubからアクセストークンを取得
     token_response = exchange_code_for_token(code)
@@ -188,12 +195,12 @@ class GitHubOAuthAPI
         }
 
         # フロントエンドにリダイレクト（セッションIDをクエリパラメータで渡す）
-        redirect_response("http://localhost:3000?session=#{session_id}&login=success")
+        redirect_response("#{frontend_url}?session=#{session_id}&login=success")
       else
-        redirect_response("http://localhost:3000?error=user_info_failed")
+        redirect_response("#{frontend_url}?error=user_info_failed")
       end
     else
-      redirect_response("http://localhost:3000?error=token_exchange_failed")
+      redirect_response("#{frontend_url}?error=token_exchange_failed")
     end
   end
 
@@ -503,6 +510,13 @@ class GitHubOAuthAPI
 
   def generate_random_string(length)
     SecureRandom.urlsafe_base64(length)[0, length]
+  end
+
+  def extract_frontend_port(path)
+    uri = URI(path)
+    params = URI.decode_www_form(uri.query || '')
+    port = params.find { |k, v| k == 'frontend_port' }&.last
+    port || '3000'
   end
 
   def json_response(data, status = 200)

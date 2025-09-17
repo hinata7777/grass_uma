@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* UMAアニメーション */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes bounce-soft {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  25% { transform: translateY(-5px) scale(1.05); }
+  50% { transform: translateY(-10px) scale(1.1); }
+  75% { transform: translateY(-5px) scale(1.05); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes discovery {
+  0% {
+    opacity: 0;
+    transform: scale(0.1) rotate(-180deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2) rotate(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(10px);
+  }
+}
+
+/* ピクセルアート用スタイル */
+.pixel-art {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+/* カスタムスクロールバー */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-uma-dark;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-uma-border rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-uma-muted;
+}
+
+/* ベーススタイル */
+body {
+  @apply bg-uma-dark text-uma-text font-pixel text-sm;
+  line-height: 1.6;
+}
+
+/* ピクセルフォント専用調整 */
+.font-pixel {
+  line-height: 1.5;
+  vertical-align: baseline;
+  display: inline-block;
+  font-feature-settings: "kern" off;
+  text-rendering: optimizeSpeed;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+}
+
+/* 全体的なピクセル調整 */
+* {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 小さなテキストはサイズ調整のみ */
+.text-small {
+  @apply text-xs;
+  line-height: 1.6;
+}
+
+/* ボタンスタイル - サイズ調整 */
+button {
+  @apply font-pixel text-xs;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+/* 入力フィールド */
+input, textarea {
+  @apply font-pixel text-sm;
+  line-height: 1.5;
+}
+
+/* メインタイトル用 */
+.title-large {
+  @apply font-pixel text-2xl;
+  line-height: 1.3;
+}
+
+/* セクションタイトル用 */
+.title-section {
+  @apply font-pixel text-base;
+  line-height: 1.4;
+}
+
+/* 混合テキスト用の調整クラス */
+.text-mixed {
+  display: flex;
+  align-items: center;
+  line-height: 1.5;
+}
+
+.text-mixed > * {
+  vertical-align: middle;
+}
+
+/* UMAカードのホバーエフェクト */
+.uma-card {
+  @apply transition-all duration-300 hover:scale-105 hover:shadow-uma-lg;
+}
+
+.uma-card:hover {
+  transform: translateY(-5px) scale(1.02);
+}
