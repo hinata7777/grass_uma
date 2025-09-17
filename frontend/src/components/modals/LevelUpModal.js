@@ -22,7 +22,7 @@ const LevelUpModal = ({
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 1000,
-        animation: 'modalFadeIn 0.5s ease-out'
+        animation: 'modal-fade 0.5s ease-out'
       }}
       onClick={onClose}
     >
@@ -68,8 +68,11 @@ const LevelUpModal = ({
 
         <div
           style={{
-            animation: 'discoveryAppear 1.5s ease-out',
-            marginBottom: '20px'
+            animation: 'discovery 1.5s ease-out',
+            marginBottom: '20px',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center'
           }}
         >
           {getUmaSprite(levelUpData.umaName) ? (
@@ -81,7 +84,7 @@ const LevelUpModal = ({
                 height: '128px',
                 imageRendering: 'pixelated',
                 filter: 'drop-shadow(4px 4px 8px rgba(0,0,0,0.8)) drop-shadow(0 0 20px rgba(251, 191, 36, 0.6))',
-                animation: 'bounce 2s ease-in-out infinite'
+                animation: 'bounce-soft 2s ease-in-out infinite'
               }}
             />
           ) : (
@@ -89,7 +92,7 @@ const LevelUpModal = ({
               fontSize: '128px',
               filter: 'drop-shadow(4px 4px 8px rgba(0,0,0,0.8)) drop-shadow(0 0 20px rgba(251, 191, 36, 0.6))',
               lineHeight: '1',
-              animation: 'bounce 2s ease-in-out infinite'
+              animation: 'bounce-soft 2s ease-in-out infinite'
             }}>
               {levelUpData.emoji}
             </div>

@@ -24,7 +24,7 @@ const UMADiscoveryModal = ({
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 1000,
-        animation: 'modalFadeIn 0.5s ease-out'
+        animation: 'modal-fade 0.5s ease-out'
       }}
       onClick={onClose}
     >
@@ -70,8 +70,11 @@ const UMADiscoveryModal = ({
 
         <div
           style={{
-            animation: 'discoveryAppear 1.5s ease-out',
-            marginBottom: '20px'
+            animation: 'discovery 1.5s ease-out',
+            marginBottom: '20px',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center'
           }}
         >
           {getUmaSprite(discoveredUMA.name) ? (
@@ -82,14 +85,16 @@ const UMADiscoveryModal = ({
                 ...pixelStyleLarge,
                 width: '128px',
                 height: '128px',
-                filter: 'drop-shadow(4px 4px 8px rgba(0,0,0,0.8))'
+                filter: `drop-shadow(4px 4px 8px rgba(0,0,0,0.8)) drop-shadow(0 0 20px ${getRarityColor(discoveredUMA.rarity)}80)`,
+                animation: 'bounce-soft 2s ease-in-out infinite'
               }}
             />
           ) : (
             <div style={{
               fontSize: '128px',
-              filter: 'drop-shadow(4px 4px 8px rgba(0,0,0,0.8))',
-              lineHeight: '1'
+              filter: `drop-shadow(4px 4px 8px rgba(0,0,0,0.8)) drop-shadow(0 0 20px ${getRarityColor(discoveredUMA.rarity)}80)`,
+              lineHeight: '1',
+              animation: 'bounce-soft 2s ease-in-out infinite'
             }}>
               {discoveredUMA.emoji}
             </div>
