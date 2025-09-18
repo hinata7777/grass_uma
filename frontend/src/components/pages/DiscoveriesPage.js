@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import UMACard from '../uma/UMACard';
+import ExperienceHelpModal from '../modals/ExperienceHelpModal';
 
 const DiscoveriesPage = ({
   discoveries,
@@ -10,11 +11,20 @@ const DiscoveriesPage = ({
   getRarityText,
   getNextLevelInfo
 }) => {
+  const [showHelpModal, setShowHelpModal] = useState(false);
   return (
     <div className="bg-uma-card p-5 rounded-lg shadow-uma border border-uma-border">
-      <h3 className="text-uma-primary drop-shadow-sm title-section font-bold mb-4">
-        👁️ 発見済み怪奇生命体 ({discoveries.length}体)
-      </h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-uma-primary drop-shadow-sm title-section font-bold">
+          👁️ 発見済みUMA ({discoveries.length}体)
+        </h3>
+        <button
+          onClick={() => setShowHelpModal(true)}
+          className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-colors duration-300 flex items-center gap-1"
+        >
+          ❓ 経験値とは？
+        </button>
+      </div>
       {discoveries.length === 0 ? (
         <p className="text-uma-muted italic text-small">
           まだ闇に潜む者たちを発見していません...コントリビューションを同期して草パワーを獲得し、探索を始めましょう。
@@ -36,6 +46,11 @@ const DiscoveriesPage = ({
           ))}
         </div>
       )}
+
+      <ExperienceHelpModal
+        show={showHelpModal}
+        onClose={() => setShowHelpModal(false)}
+      />
     </div>
   );
 };

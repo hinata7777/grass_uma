@@ -49,22 +49,29 @@ const UMACard = ({
       </h4>
 
       <div className="text-xs text-uma-muted text-center mb-3">
-        <span
-          className="px-2 py-1 rounded-full text-uma-text text-xs drop-shadow-sm"
-          style={{ backgroundColor: getRarityColor(discovery.rarity) }}
-        >
-          {getRarityText(discovery.rarity)}
-        </span>
+        <div className="flex flex-wrap justify-center gap-1">
+          <span
+            className="px-2 py-1 rounded-full text-uma-text text-xs drop-shadow-sm"
+            style={{ backgroundColor: getRarityColor(discovery.rarity) }}
+          >
+            {getRarityText(discovery.rarity)}
+          </span>
+          {discovery.is_limited_time && (
+            <span className="px-2 py-1 rounded-full bg-red-500 text-white text-xs drop-shadow-sm animate-pulse">
+              ⏰ 期間限定
+            </span>
+          )}
+        </div>
       </div>
 
       <p className="text-uma-text text-sm">
         <span className="text-red-400 font-bold">レベル:</span> {discovery.level}
       </p>
       <p className="text-uma-text text-sm">
-        <span className="text-cyan-300 font-bold">親密度:</span> {discovery.affection}/100
+        <span className="text-cyan-300 font-bold">経験値:</span> {discovery.experience}
       </p>
       <p className="text-uma-text text-xs">
-        <span className="text-yellow-400 font-bold">成長:</span> {getNextLevelInfo(discovery.level, discovery.affection)}
+        <span className="text-yellow-400 font-bold">成長:</span> {getNextLevelInfo(discovery.level, discovery.experience)}
       </p>
 
       {isLarge && (
@@ -91,11 +98,11 @@ const UMACard = ({
             className={`${isLarge ? 'px-3 py-1.5 text-xs' : 'px-2 py-1 text-xs'}
                        rounded transition-all duration-300 border
                        ${(userStats?.grass_power || 0) >= 10
-                         ? 'bg-action-success border-green-500 text-uma-text hover:bg-green-600'
+                         ? 'bg-green-500 border-green-500 text-white hover:bg-green-600'
                          : 'bg-gray-700 border-gray-600 text-uma-muted cursor-not-allowed opacity-60'
                        }`}
           >
-            🍯エサ(-10)
+            🌱草パワー(-10)
           </button>
           {isLarge && (
             <button
@@ -107,7 +114,7 @@ const UMACard = ({
                            : 'bg-gray-700 border-gray-600 text-uma-muted cursor-not-allowed opacity-60'
                          }`}
             >
-              🥩 高級エサ (-25)
+              ⚡ 強化草パワー (-25)
             </button>
           )}
         </div>

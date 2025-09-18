@@ -128,8 +128,8 @@ const LevelUpModal = ({
           marginBottom: '30px',
           fontStyle: 'italic'
         }}>
-          親密度が{levelUpData.affection}/100に達しました！<br/>
-          より強い絆で結ばれています ✨
+          レベルが上がりました！<br/>
+          シェアして自慢しましょう！ ✨
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' }}>

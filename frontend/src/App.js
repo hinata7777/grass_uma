@@ -75,6 +75,7 @@ function App() {
               <HomePage
                 userStats={uma.userStats}
                 discoveries={uma.discoveries}
+                species={uma.species}
                 loading={uma.loading}
                 onSyncContributions={uma.syncContributions}
                 onDiscoverUMA={uma.discoverUMA}

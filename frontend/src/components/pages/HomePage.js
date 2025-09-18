@@ -4,6 +4,7 @@ import UMACard from '../uma/UMACard';
 const HomePage = ({
   userStats,
   discoveries,
+  species,
   loading,
   onSyncContributions,
   onDiscoverUMA,
@@ -14,6 +15,10 @@ const HomePage = ({
   getRarityText,
   getNextLevelInfo
 }) => {
+  // 全UMA発見の判定
+  const totalUmaCount = species?.length || 0;
+  const discoveredUmaCount = discoveries?.length || 0;
+  const allUmaDiscovered = totalUmaCount > 0 && discoveredUmaCount >= totalUmaCount;
   return (
     <div className="space-y-5">
       {/* コントリビューション同期セクション */}
@@ -43,20 +48,28 @@ const HomePage = ({
           🔮 UMA発見の儀式
         </h3>
         <p className="text-uma-muted mb-4 text-small">
-          草パワーを使って新しい未確認生命体を探索...闇に潜む者たちを呼び覚ませ<br />
-          最低10パワーが必要です。
+          {allUmaDiscovered
+            ? `おめでとうございます！全${totalUmaCount}体のUMAを発見しました。`
+            : '草パワーを使って新しい未確認生命体を探索...闇に潜む者たちを呼び覚ませ'
+          }<br />
+          {!allUmaDiscovered && '最低15パワーが必要です。'}
         </p>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={onDiscoverUMA}
-            disabled={loading || (userStats?.grass_power || 0) < 10}
+            disabled={loading || (userStats?.grass_power || 0) < 15 || allUmaDiscovered}
             className={`px-6 py-3 rounded border transition-all duration-300 drop-shadow-sm
-                       ${(userStats?.grass_power || 0) >= 10 && !loading
+                       ${(userStats?.grass_power || 0) >= 15 && !loading && !allUmaDiscovered
                          ? 'bg-uma-secondary border-uma-secondary text-uma-text hover:bg-purple-600'
                          : 'bg-gray-700 border-gray-600 text-uma-muted cursor-not-allowed opacity-60'
                        }`}
           >
-            {loading ? '🌀 探索中...' : '🔍 UMA探索開始'}
+            {loading
+              ? '🌀 探索中...'
+              : allUmaDiscovered
+                ? '🏆 全てのUMAを発見した！'
+                : '🔍 UMA探索開始'
+            }
           </button>
           <button
             onClick={() => onAddTestPoints(50)}
@@ -116,6 +129,7 @@ const HomePage = ({
                 getRarityText={getRarityText}
                 getNextLevelInfo={getNextLevelInfo}
                 size="small"
+                showFeeding={false}
               />
             ))}
           </div>

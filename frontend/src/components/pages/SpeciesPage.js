@@ -60,12 +60,19 @@ const SpeciesPage = ({
                 {discovered ? s.name : '未知の存在'}
               </h4>
               <div className="text-xs text-uma-muted text-center mb-2">
-                <span
-                  className="px-2 py-1 rounded-full text-uma-text drop-shadow-sm"
-                  style={{ backgroundColor: getRarityColor(s.rarity) }}
-                >
-                  {getRarityText(s.rarity)}
-                </span>
+                <div className="flex flex-wrap justify-center gap-1">
+                  <span
+                    className="px-2 py-1 rounded-full text-uma-text drop-shadow-sm"
+                    style={{ backgroundColor: getRarityColor(s.rarity) }}
+                  >
+                    {getRarityText(s.rarity)}
+                  </span>
+                  {s.is_limited_time && (
+                    <span className="px-2 py-1 rounded-full bg-red-500 text-white text-xs drop-shadow-sm animate-pulse">
+                      ⏰ 期間限定
+                    </span>
+                  )}
+                </div>
               </div>
               <p className="text-uma-text text-small">
                 <span className="text-red-400 font-bold">草パワー:</span> {s.discovery_threshold}
