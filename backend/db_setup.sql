@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS user_uma_discoveries (
     uma_species_id INTEGER REFERENCES uma_species(id),
     nickname VARCHAR(100), -- ユーザーが付けたニックネーム
     level INTEGER DEFAULT 1,
-    affection INTEGER DEFAULT 0, -- 親密度
+    experience INTEGER DEFAULT 0, -- 経験値
     discovery_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     total_contributions_fed INTEGER DEFAULT 0, -- 与えたコントリビューション総数

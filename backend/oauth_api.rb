@@ -639,7 +639,10 @@ class GitHubOAuthAPI
           emoji: row['emoji'],
           rarity: row['rarity'].to_i,
           discovery_threshold: row['discovery_threshold'].to_i,
-          habitat: row['habitat']
+          habitat: row['habitat'],
+          is_limited_time: row['is_limited_time'] == 't',
+          limited_start_date: row['limited_start_date'],
+          limited_end_date: row['limited_end_date']
         }
       end
 
@@ -722,7 +725,7 @@ class GitHubOAuthAPI
           emoji: row['emoji'],
           nickname: row['nickname'],
           level: row['level'].to_i,
-          affection: row['affection'].to_i,
+          experience: row['experience'].to_i,
           rarity: row['rarity'].to_i,
           habitat: row['habitat'],
           discovery_date: row['discovery_date'],
@@ -797,12 +800,12 @@ class GitHubOAuthAPI
 
       puts "DEBUG: User ID: #{user_id}, Current grass power: #{current_power}"
 
-      if current_power < 10
-        puts "DEBUG: Not enough grass power - Current: #{current_power}, Required: 10"
+      if current_power < 15
+        puts "DEBUG: Not enough grass power - Current: #{current_power}, Required: 15"
         return json_response({
           error: "Not enough grass power",
           current_power: current_power,
-          required_power: 10
+          required_power: 15
         }, 400)
       end
 
@@ -941,7 +944,7 @@ class GitHubOAuthAPI
 
       # UMAの発見記録を確認（ユーザーが実際に発見したUMAか）
       uma_result = conn.exec_params(
-        "SELECT id, level, affection FROM user_uma_discoveries WHERE id = $1 AND user_id = $2",
+        "SELECT id, level, experience FROM user_uma_discoveries WHERE id = $1 AND user_id = $2",
         [uma_discovery_id, user_id]
       )
 
@@ -950,23 +953,23 @@ class GitHubOAuthAPI
       end
 
       current_level = uma_result[0]['level'].to_i
-      current_affection = uma_result[0]['affection'].to_i
+      current_experience = uma_result[0]['experience'].to_i
 
-      # 餌やり効果を計算
-      affection_gain = calculate_affection_gain(feed_amount, current_level)
-      new_affection = [current_affection + affection_gain, 100].min  # 親密度は最大100
+      # 草パワーから経験値への変換を計算
+      experience_gain = calculate_experience_gain(feed_amount, current_level)
+      new_experience = current_experience + experience_gain  # 経験値上限なし
 
       # レベルアップ判定
-      new_level = calculate_level_from_affection(new_affection)
+      new_level = calculate_level_from_experience(new_experience)
       level_up = new_level > current_level
 
       # データベース更新
       conn.exec_params("BEGIN")
 
-      # UMAの親密度・レベル更新
+      # UMAの経験値・レベル更新
       conn.exec_params(
-        "UPDATE user_uma_discoveries SET level = $1, affection = $2 WHERE id = $3",
-        [new_level, new_affection, uma_discovery_id]
+        "UPDATE user_uma_discoveries SET level = $1, experience = $2 WHERE id = $3",
+        [new_level, new_experience, uma_discovery_id]
       )
 
       # ユーザーの草パワー減少
@@ -977,8 +980,8 @@ class GitHubOAuthAPI
 
       # アクティビティログ記録
       activity_desc = level_up ?
-        "UMAに餌をあげてレベルが#{current_level}から#{new_level}に上がりました！" :
-        "UMAに餌をあげて親密度が#{affection_gain}上がりました"
+        "UMAに草パワーを与えてレベルが#{current_level}から#{new_level}に上がりました！" :
+        "UMAに草パワーを与えて経験値が#{experience_gain}上がりました"
 
       conn.exec_params(
         "INSERT INTO uma_activity_logs (user_id, activity_type, description, points_used) VALUES ($1, 'feeding', $2, $3)",
@@ -991,8 +994,8 @@ class GitHubOAuthAPI
         success: true,
         message: level_up ? "🎉 レベルアップしました！" : "🍯 UMAが喜んでいます！",
         results: {
-          affection_gained: affection_gain,
-          new_affection: new_affection,
+          experience_gained: experience_gain,
+          new_experience: new_experience,
           new_level: new_level,
           level_up: level_up,
           power_used: feed_amount,
@@ -1012,30 +1015,47 @@ class GitHubOAuthAPI
     end
   end
 
-  # 餌やりの親密度上昇量を計算
-  def calculate_affection_gain(feed_amount, current_level)
-    base_gain = feed_amount / 5  # 5草パワーで1親密度
-    # レベルが高いほど効率が少し悪くなる
-    level_penalty = current_level * 0.1
-    [base_gain - level_penalty, 1].max.to_i  # 最低1は上がる
+  # 草パワーから経験値への変換計算
+  def calculate_experience_gain(feed_amount, current_level)
+    # 基本変換（1草パワー = 1経験値）
+    base_gain = feed_amount
+
+    # 25草パワーの場合はボーナス（30経験値獲得）
+    if feed_amount == 25
+      base_gain = 30
+    end
+
+    # レベルが高いほど効率が少し悪くなる（レベル10以上から）
+    if current_level >= 10
+      level_penalty = (current_level - 9) * 0.1
+      [base_gain - level_penalty.to_i, 1].max.to_i
+    else
+      base_gain
+    end
   end
 
-  # 親密度からレベルを計算
-  def calculate_level_from_affection(affection)
-    case affection
-    when 0..19
-      1
-    when 20..39
-      2
-    when 40..59
-      3
-    when 60..79
-      4
-    when 80..100
-      5
-    else
-      1
+  # 経験値からレベルを計算
+  def calculate_level_from_experience(experience)
+    return 1 if experience < 10
+
+    # レベル2で10経験値、レベル50で100経験値の段階的な計算
+    # 各レベルに必要な累積経験値を計算
+    level = 1
+    required_exp = 0
+
+    (2..50).each do |lv|
+      # レベル2は10、レベル50は100になるように線形補間
+      exp_for_level = 10 + ((lv - 2) * 90.0 / 48).round
+      required_exp += exp_for_level
+
+      if experience >= required_exp
+        level = lv
+      else
+        break
+      end
     end
+
+    [level, 50].min
   end
 
   def debug_add_points(headers, path)

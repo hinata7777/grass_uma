@@ -103,12 +103,12 @@ export const useUMA = () => {
               emoji: currentUMA.emoji,
               oldLevel: data.results.new_level - 1,
               newLevel: data.results.new_level,
-              affection: data.results.new_affection
+              experience: data.results.new_experience
             });
             setShowLevelUpModal(true);
           }
         } else {
-          alert(`${data.message}\n親密度: +${data.results.affection_gained} (${data.results.new_affection}/100)\nレベル: ${data.results.new_level}\n使用草パワー: ${data.results.power_used}\n残り草パワー: ${data.results.remaining_power}`);
+          alert(`${data.message}\n経験値: +${data.results.experience_gained} (${data.results.new_experience})\nレベル: ${data.results.new_level}\n使用草パワー: ${data.results.power_used}\n残り草パワー: ${data.results.remaining_power}`);
         }
 
         setUserStats(prev => ({
@@ -117,11 +117,11 @@ export const useUMA = () => {
         }));
         loadUMAData();
       } else {
-        alert('エサやりに失敗しました: ' + data.error);
+        alert('草パワー付与に失敗しました: ' + data.error);
       }
     } catch (error) {
-      console.error('Failed to feed UMA:', error);
-      alert('エサやりに失敗しました');
+      console.error('Failed to give grass power to UMA:', error);
+      alert('草パワー付与に失敗しました');
     } finally {
       setLoading(false);
     }
@@ -197,22 +197,25 @@ export const useUMA = () => {
     return texts[rarity] || 'コモン';
   };
 
-  const getNextLevelInfo = (currentLevel, affection) => {
-    const levelThresholds = {
-      1: { min: 0, max: 19 },
-      2: { min: 20, max: 39 },
-      3: { min: 40, max: 59 },
-      4: { min: 60, max: 79 },
-      5: { min: 80, max: 100 }
-    };
-
-    if (currentLevel >= 5) {
+  const getNextLevelInfo = (currentLevel, experience) => {
+    if (currentLevel >= 50) {
       return "最大レベル";
     }
 
+    // バックエンドと同じロジックで次のレベルに必要な累積経験値を計算
+    const calculateRequiredExp = (targetLevel) => {
+      if (targetLevel <= 1) return 0;
+      let totalExp = 0;
+      for (let lv = 2; lv <= targetLevel; lv++) {
+        const expForLevel = 10 + Math.round((lv - 2) * 90.0 / 48);
+        totalExp += expForLevel;
+      }
+      return totalExp;
+    };
+
     const nextLevel = currentLevel + 1;
-    const nextLevelThreshold = levelThresholds[nextLevel]?.min || 100;
-    const pointsNeeded = nextLevelThreshold - affection;
+    const nextLevelThreshold = calculateRequiredExp(nextLevel);
+    const pointsNeeded = nextLevelThreshold - experience;
 
     return pointsNeeded > 0 ? `あと${pointsNeeded}ポイントでLv.${nextLevel}` : `Lv.${nextLevel}可能`;
   };
